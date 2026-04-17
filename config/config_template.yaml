@@ -1,0 +1,29 @@
+# config.yaml — RAG pipeline configuration
+# ==========================================
+# Edit this file to match your setup.
+# Paths are relative to the project root (directory containing config.py).
+
+paths:
+  text_file: "../study ai/datasete/Shulchan Arukh, Orach Chayim - he - Torat Emet 363.txt"
+  xlsx_path: "שולחן_ערוך_כל_השאלות.xlsx"
+
+chunker:
+  chunk_size: 200       # words per chunk
+  overlap: 50           # words shared between consecutive chunks
+  mode: siman_boundary  # "siman_boundary" | "sliding_window"
+
+embeddings:
+  model: "intfloat/multilingual-e5-small"
+  batch_size: 32
+  prefix_passage: "passage: "
+  prefix_query: "query: "
+
+retrieval:
+  top_k: 3             # chunks returned to the user / LLM
+  top_k_retrieve: 10   # chunks retrieved for Recall@K computation
+  score_threshold: 0.85
+
+evaluation:
+  llm_model: "gpt-4o"
+  top_k_context: 3     # chunks sent to the LLM for answer generation
+  sleep_between_calls: 0.3
