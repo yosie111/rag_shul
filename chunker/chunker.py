@@ -34,6 +34,14 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import yaml
+
+CONFIG_PATH = Path(__file__).parent.parent / "config" / "config_template.yaml"
+
+
+def load_config() -> dict:
+    with open(CONFIG_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f)
 
 
 def load_schema(json_path: str | Path) -> dict:
@@ -42,27 +50,29 @@ def load_schema(json_path: str | Path) -> dict:
         return json.load(f)
 
 
-def build_dataframe(schema: dict) -> pd.DataFrame:
+def build_dataframe(schema: dict, chunk_fields: list[str] | None = None) -> pd.DataFrame:
     """
     Convert the RAG JSON dict into a flat DataFrame (one row per seif).
 
     Args:
         schema: parsed JSON dict
+        chunk_fields: ordered list of seif fields to join into the text column.
+                      Defaults to the chunk_fields list in config_template.yaml.
 
     Returns:
         DataFrame with columns: siman, seif, siman_seif, text
         Sorted by siman then seif, with a clean integer index.
-        The text column combines the main text and hagah (Rema commentary).
     """
+    if chunk_fields is None:
+        chunk_fields = load_config()["chunker"]["chunk_fields"]
+
     rows = []
     for siman_data in schema["simanim"]:
         siman_num = siman_data["siman"]
         for seif_data in siman_data["seifim"]:
             seif_num = seif_data["seif"]
-            text = seif_data["text"]
-            hagah = seif_data.get("hagah")
-            if hagah:
-                text = text + " " + hagah
+            parts = [seif_data.get(f) for f in chunk_fields if seif_data.get(f)]
+            text = " ".join(parts)
             rows.append({
                 "siman":      siman_num,
                 "seif":       seif_num,

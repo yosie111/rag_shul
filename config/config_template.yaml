@@ -11,6 +11,10 @@ chunker:
   chunk_size: 200       # words per chunk
   overlap: 50           # words shared between consecutive chunks
   mode: siman_boundary  # "siman_boundary" | "sliding_window"
+  chunk_fields:         # ordered list of seif fields to join into the chunk text
+    - text
+    # - hagah             # uncomment to include Rema commentary
+    # - siman_title       # uncomment to prepend the siman topic heading to each chunk
 
 embeddings:
   model: "intfloat/multilingual-e5-small"
