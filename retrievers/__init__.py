@@ -11,10 +11,12 @@ To add a new retriever:
 
 from .base import BaseRetriever
 from .semantic_e5_seif_v6_combined import SemanticE5SeifV6CombinedRetriever
+from .semantic_e5_rag_json import SemanticE5RagJsonRetriever
 
 # Map of name → class for every available retriever
 REGISTRY: dict[str, type[BaseRetriever]] = {
     "semantic_e5_seif_v6_combined": SemanticE5SeifV6CombinedRetriever,
+    "semantic_e5_rag_json":         SemanticE5RagJsonRetriever,
 }
 
 
