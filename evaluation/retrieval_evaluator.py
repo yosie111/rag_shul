@@ -10,6 +10,7 @@ Called from Version6 in a loop; no changes to BaseRetriever contracts.
 """
 
 import time
+import warnings
 from datetime import datetime
 
 try:
@@ -27,6 +28,10 @@ from .base import BaseEvaluator
 DEFAULT_K_VALUES   = [1, 3, 5, 10, 18, 30, 50]
 DEFAULT_TARGET_K   = 50
 DEFAULT_TARGET_REC = 0.85
+
+# Known keys that may appear in the YAML evaluation block but are intended for
+# other evaluators (e.g. LLMEvaluator). They are silently accepted.
+_KNOWN_FOREIGN_KEYS = {"llm_model", "top_k_context", "sleep_between_calls"}
 
 
 def _find_gt_rank_unique_siman(results: list[dict], gt_siman: int) -> int | None:
@@ -92,6 +97,15 @@ class RetrievalEvaluator(BaseEvaluator):
         max_k = max(self.k_values)
         self.retrieve_k    = max(retrieve_k or max_k, max_k)
 
+        # Warn on truly unknown keys — ignore keys that belong to sibling evaluators
+        unexpected = {k: v for k, v in _unused.items() if k not in _KNOWN_FOREIGN_KEYS}
+        if unexpected:
+            warnings.warn(
+                f"RetrievalEvaluator received unknown parameters: {list(unexpected.keys())}. "
+                f"Check for typos in exp_config.yaml (evaluation section).",
+                stacklevel=2,
+            )
+
     def evaluate(self, retriever, queries_df, **kwargs) -> dict:
         ranks: list = []
         t_start = time.perf_counter()
@@ -139,30 +153,24 @@ class RetrievalEvaluator(BaseEvaluator):
 
         lines = [
             f"Run: {ts_readable}",
+            f"Evaluator: {self.name} (granularity: unique-siman)",
             f"Retriever: {retriever_name}",
-            f"Evaluator: {self.name}",
-            f"Dense: 100% {n_total}/{n_total} [{int(elapsed)}s, "
-            f"{(n_total / elapsed if elapsed > 0 else 0):.2f} it/s]",
+            f"Questions: {n_total}",
+            f"Elapsed:   {elapsed:.2f} sec",
             "",
-            "Dense Retrieval — Results  (granularity: unique-siman)",
-            "=" * 40,
-            f"{'K':>4}  {'Recall':>8}  {'Hits':>14}",
-            "-" * 40,
+            "Recall@K:",
         ]
         for k in k_values:
-            hits = metrics["recall_at"][k]
-            rate = metrics["recall_rate"][k] * 100
-            lines.append(f"{k:>4}  {rate:>7.1f}%  {hits:>5} / {n_total}")
-        lines.append("-" * 40)
-        lines.append(f"MRR: {metrics['mrr']:.4f}  |  Time: {int(elapsed)}s")
-
-        tk = result["target_k"]
-        if tk in metrics["recall_rate"]:
-            rate_at_target = metrics["recall_rate"][tk] * 100
-            target_pct     = result["target_recall"] * 100
-            passed         = result["target_passed"]
-            icon           = "✅" if passed else "❌"
-            status         = "Passed the target!" if passed else f"Did not pass (target: {target_pct:.0f}%)"
-            lines.append(f"R@{tk}={rate_at_target:.1f}%  {icon} {status}")
-
+            rate = metrics["recall_rate"].get(k, 0.0)
+            count = metrics["recall_at"].get(k, 0)
+            lines.append(f"  K={k:<3} → {rate:.4f}  ({count}/{n_total})")
+        lines.append("")
+        lines.append(f"MRR: {metrics['mrr']:.4f}")
+        lines.append("")
+        status = "PASSED" if result["target_passed"] else "FAILED"
+        target_rate = metrics["recall_rate"].get(self.target_k, 0.0)
+        lines.append(
+            f"Target: Recall@{self.target_k} >= {self.target_recall:.2f} "
+            f"→ {target_rate:.4f} [{status}]"
+        )
         return "\n".join(lines)

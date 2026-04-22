@@ -22,8 +22,10 @@ from sentence_transformers import SentenceTransformer
 from .base import BaseRetriever
 
 # ─── Paths and model name ──────────────────────────────────────────────────────
-SEIFS_FILE      = Path(__file__).parent.parent / "seifs_v6_combined.json"
-EMBEDDINGS_FILE = Path(__file__).parent.parent / "seifs_v6_combined_intfloat_multilingual_e5_large.npy"
+_ROOT = Path(__file__).resolve().parents[1]
+
+SEIFS_FILE      = _ROOT / "seifs_v6_combined.json"
+EMBEDDINGS_FILE = _ROOT / "seifs_v6_combined_intfloat_multilingual_e5_large.npy"
 EMBED_MODEL     = "intfloat/multilingual-e5-large"
 
 
@@ -40,17 +42,44 @@ class SemanticE5SeifV6CombinedRetriever(BaseRetriever):
         self._seifs: list[dict] | None = None
 
     def _load(self) -> None:
-        """Load model, embeddings matrix, and seif data (once per process)."""
+        """
+        Load model, embeddings matrix, and seif data (once per process).
+
+        Order is intentional — fail fast on missing files BEFORE the expensive
+        model download/load. Matches the pattern in SemanticE5RagJsonRetriever.
+        """
         if self._model is not None:
             return  # already loaded
 
-        self._model = SentenceTransformer(EMBED_MODEL)
+        # 1. Check files exist first — fail fast before expensive model load
+        if not SEIFS_FILE.exists():
+            raise FileNotFoundError(
+                f"Seifs JSON not found: {SEIFS_FILE}\n"
+                f"Build it with build_seifs_combined.py."
+            )
+        if not EMBEDDINGS_FILE.exists():
+            raise FileNotFoundError(
+                f"Embeddings matrix not found: {EMBEDDINGS_FILE}\n"
+                f"Build it with step_02_embeddings.py."
+            )
 
-        # Shape: (4169, 1024) — pre-computed, L2-normalized passage embeddings
-        self._embeddings = np.load(str(EMBEDDINGS_FILE))
-
+        # 2. Load seifs JSON (cheap)
         with open(SEIFS_FILE, encoding="utf-8") as f:
             self._seifs = json.load(f)
+
+        # 3. Shape: (4169, 1024) — pre-computed, L2-normalized passage embeddings
+        self._embeddings = np.load(str(EMBEDDINGS_FILE))
+
+        # 4. Sanity check — lengths must match (catches stale .npy files)
+        if len(self._seifs) != self._embeddings.shape[0]:
+            raise RuntimeError(
+                f"Mismatch: {len(self._seifs)} seifs in JSON vs. "
+                f"{self._embeddings.shape[0]} rows in .npy.\n"
+                f"The .npy may have been built from a different chunks version. Rebuild it."
+            )
+
+        # 5. Model — heaviest resource, loaded last
+        self._model = SentenceTransformer(EMBED_MODEL)
 
     def retrieve(self, query: str, top_k: int = 10) -> list[dict]:
         """
@@ -74,8 +103,11 @@ class SemanticE5SeifV6CombinedRetriever(BaseRetriever):
         # Dot product with pre-normalized corpus vectors = cosine similarity for all seifs
         scores = self._embeddings @ query_vec  # shape: (4169,)
 
+        # Clamp top_k — np.argpartition(scores, -k) raises ValueError if k >= len(scores)
+        k = min(top_k, len(scores))
+
         # np.argpartition is faster than full argsort when top_k << total
-        top_indices = np.argpartition(scores, -top_k)[-top_k:]
+        top_indices = np.argpartition(scores, -k)[-k:]
         # Sort only the top_k candidates (small sort)
         top_indices = top_indices[np.argsort(scores[top_indices])[::-1]]
 

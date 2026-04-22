@@ -17,6 +17,7 @@ YAML:
       sleep_between_calls: 0.3
 """
 
+import warnings
 from datetime import datetime
 
 from .base import BaseEvaluator
@@ -37,12 +38,20 @@ class LLMEvaluator(BaseEvaluator):
         self.top_k_context       = int(top_k_context)
         self.sleep_between_calls = float(sleep_between_calls)
 
+        # Warn on any unknown YAML keys — helps catch typos like `llm_modle`
+        if _unused:
+            warnings.warn(
+                f"LLMEvaluator received unknown parameters: {list(_unused.keys())}. "
+                f"Check for typos in exp_config.yaml (evaluation section).",
+                stacklevel=2,
+            )
+
     def evaluate(self, retriever, queries_df, **kwargs) -> dict:
         raise NotImplementedError(
-            "LLMEvaluator is not yet implemented. Only RetrievalEvaluator is available for now.\n"
-            "Future: will call {self.llm_model} with top_k_context={self.top_k_context} "
-            "chunks per question, compare against the 'answer' column in the CSV, "
-            "and return BLEU/ROUGE/F1."
+            f"LLMEvaluator is not yet implemented. Only RetrievalEvaluator is available for now.\n"
+            f"Future: will call {self.llm_model} with top_k_context={self.top_k_context} "
+            f"chunks per question, compare against the 'answer' column in the CSV, "
+            f"and return BLEU/ROUGE/F1."
         )
 
     def format_report(self, result: dict, **_meta) -> str:
