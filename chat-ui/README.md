@@ -6,19 +6,19 @@ A Hebrew RTL chat interface for asking halacha (Jewish law) questions, powered b
 
 ---
 
-## Setup (both options require this)
+## Setup
 
 **1. Clone the repo**
 ```bash
 git clone https://github.com/egozi/rag_shul.git
-cd rag_shul/chat-ui
+cd rag_shul
 ```
 
 **2. Add your OpenAI API key**
 ```bash
-cp .env.example .env
+cp chat-ui/.env.example chat-ui/.env
 ```
-Open `.env` and replace the placeholder with your key:
+Open `chat-ui/.env` and replace the placeholder with your key:
 ```
 OPENAI_API_KEY=sk-...
 ```
@@ -34,7 +34,7 @@ pip install -r requirements.txt
 ## Option A — Run locally (no extra tools)
 
 ```bash
-python server.py
+python run_chat.py
 ```
 Open [http://localhost:3000](http://localhost:3000)
 
@@ -46,8 +46,9 @@ Install the Vercel CLI once:
 ```bash
 npm install -g vercel
 ```
-Then run:
+Then run from the `chat-ui` folder:
 ```bash
+cd chat-ui
 vercel dev
 ```
 Open [http://localhost:3000](http://localhost:3000)
@@ -58,12 +59,12 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Deploy to Vercel
 
-1. Create a project at [vercel.com](https://vercel.com)
-2. Go to **Settings → Environment Variables** and add `OPENAI_API_KEY`
-3. Run:
 ```bash
+cd chat-ui
 vercel --prod
 ```
+
+> First time? Create a project at [vercel.com](https://vercel.com) and add `OPENAI_API_KEY` under **Settings → Environment Variables**.
 
 ---
 
@@ -71,9 +72,9 @@ vercel --prod
 
 | File | Purpose |
 |------|---------|
-| `index.html` | Chat UI |
-| `api/chat.py` | Serverless function that calls OpenAI |
-| `server.py` | Local server for Option A |
+| `run_chat.py` | Local dev server (run from repo root) |
 | `requirements.txt` | Python dependencies |
-| `.env.example` | API key template — never commit a real key |
-| `vercel.json` | Vercel configuration |
+| `chat-ui/index.html` | Chat UI |
+| `chat-ui/api/chat.py` | Serverless function that calls OpenAI |
+| `chat-ui/.env.example` | API key template — never commit a real key |
+| `chat-ui/vercel.json` | Vercel configuration |
