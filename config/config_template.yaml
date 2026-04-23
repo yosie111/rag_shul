@@ -4,8 +4,8 @@
 # Paths are relative to the project root (directory containing config.py).
 
 paths:
-  text_file: "../study ai/datasete/Shulchan Arukh, Orach Chayim - he - Torat Emet 363.txt"
-  xlsx_path: "שולחן_ערוך_כל_השאלות.xlsx"
+  json_file: "shulchan_aruch_rag.json"
+  csv_path: "sa_eval.csv"
 
 chunker:
   chunk_size: 200       # words per chunk
