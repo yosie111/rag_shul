@@ -1,5 +1,5 @@
 """
-SemanticE5RagJsonRetriever — semantic retrieval on pre-built CSV + NPY artifacts
+NpyRetriever — semantic retrieval on pre-built CSV + NPY artifacts
 ================================================================================
 Layout this retriever expects:
     <project_root>/
@@ -8,7 +8,7 @@ Layout this retriever expects:
     (paths are passed in via kwargs — nothing is hardcoded)
 
 What the retriever does:
-    1. Loads the chunks CSV (already flat, includes a breadcrumb column)
+    1. Loads the chunks CSV (siman, seif, text)
     2. Loads the .npy matrix  (must have the same number of rows as the CSV)
     3. For each query: calls embed.encode_query — same prefix + model as passages
     4. scores = embeddings @ query_vec, returns top_k
@@ -17,9 +17,7 @@ The retriever no longer owns any text-prep logic: chunking is done by the chunke
 passage encoding by embed.build_embeddings, query encoding by embed.encode_query.
 
 Returns dicts conforming to BaseRetriever.retrieve:
-    rank, chunk_id, score, text, siman_parent
-Plus helper fields for the Version6 report:
-    siman, seif, siman_seif
+    rank, chunk_id, score, text, siman_parent, siman, seif
 """
 
 from pathlib import Path
@@ -35,7 +33,7 @@ from embedder.embed import encode_query
 DEFAULT_MODEL = "intfloat/multilingual-e5-large"
 
 
-class SemanticE5RagJsonRetriever(BaseRetriever):
+class NpyRetriever(BaseRetriever):
 
     @property
     def name(self) -> str:
@@ -82,7 +80,7 @@ class SemanticE5RagJsonRetriever(BaseRetriever):
 
         # 1. CSV — chunks already flat, no JSON flattening required
         df = pd.read_csv(self._chunks_csv)
-        required = {"siman", "seif", "siman_seif", "text"}
+        required = {"siman", "seif", "text"}
         missing = required - set(df.columns)
         if missing:
             raise ValueError(f"Missing columns in {self._chunks_csv.name}: {missing}")
@@ -130,9 +128,7 @@ class SemanticE5RagJsonRetriever(BaseRetriever):
                 "score":        round(float(scores[idx]), 4),
                 "text":         s["text"],
                 "siman_parent": int(s["siman"]),   # BaseRetriever contract
-                # Helper fields for the Version6 report
                 "siman":        int(s["siman"]),
                 "seif":         int(s["seif"]),
-                "siman_seif":   s["siman_seif"],
             })
         return results

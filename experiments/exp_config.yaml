@@ -20,16 +20,17 @@ run_mode: full        # full | mini
 
 paths:
   full:
-    json_file:       "../data/processed/shulchan_aruch_rag.json"   # input
-    chunks_csv:      "../data/processed/chunks_v1.csv"             # intermediate
-    embeddings_npy:  "../data/processed/embeddings_v1.npy"         # intermediate
-    csv_path:        "../data/eval/sa_eval.csv"                    # eval questions
+    json_file:       "../data/processed/shulchan_aruch_rag.json"
+    chunks_csv:      "chunks_v1.csv"                              # ← שונה
+    embeddings_npy:  "embeddings_v1.npy"
+    csv_path:        "../data/eval/sa_eval.csv"
 
   mini:
     json_file:       "../data/processed/mini_shulchan_aruch_rag.json"
-    chunks_csv:      "../data/processed/mini_chunks_v1.csv"
-    embeddings_npy:  "../data/processed/mini_embeddings_v1.npy"
+    chunks_csv:      "mini_chunks_v1.csv"                         # ← שונה
+    embeddings_npy:  "mini_embeddings_v1.npy"
     csv_path:        "../data/eval/mini_sa_eval.csv"
+
 
 chunker:
   chunk_size: 200       # words per chunk

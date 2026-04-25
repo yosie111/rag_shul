@@ -5,11 +5,11 @@ Two output paths:
   1. NPY matrix (for the retrieval_npy retriever) — build_embeddings(...)
   2. ChromaDB   (for the legacy Chroma-based retriever) — store_in_chroma(...) via main()
 
-Both paths share the same passage-text formula (prefix + breadcrumb + ": " + text),
+Both paths share the same passage-text formula (prefix + text),
 so a query embedded via encode_query() is compatible with either index.
 
 Input CSV columns (produced by chunker.build_csv):
-    siman, seif, siman_seif, breadcrumb, text
+    siman, seif, text
 
 Public API:
     build_embeddings(csv, npy, model, ...)     → writes NPY
@@ -42,14 +42,14 @@ BATCH_SIZE         = 32
 # ─── Shared helpers ────────────────────────────────────────────────────────────
 
 def load_chunks(csv_path: Path) -> list[dict]:
-    """Load chunks CSV produced by the chunker. Requires the breadcrumb column."""
+    """Load chunks CSV produced by the chunker. Requires siman, seif, text."""
     df = pd.read_csv(csv_path)
-    required = {"siman", "seif", "siman_seif", "breadcrumb", "text"}
+    required = {"siman", "seif", "text"}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(
             f"Missing columns in CSV: {missing}. "
-            f"Re-run the chunker — it now emits a 'breadcrumb' column."
+            f"Expected at least {sorted(required)}."
         )
     print(f"  {len(df)} seifs loaded from {csv_path.name}")
     return df.to_dict("records")
@@ -58,11 +58,10 @@ def load_chunks(csv_path: Path) -> list[dict]:
 def _build_passage_texts(chunks: list[dict], prefix_passage: str) -> list[str]:
     """
     Build the passage text for each chunk:
-        "<prefix_passage><breadcrumb>: <text>"
-    breadcrumb comes from the CSV (built by chunker).
+        "<prefix_passage><text>"
     """
     return [
-        prefix_passage + row["breadcrumb"] + ": " + row["text"]
+        prefix_passage + row["text"]
         for row in chunks
     ]
 
@@ -79,7 +78,7 @@ def build_embeddings(
     """
     Pipeline entry point: chunks CSV → embeddings NPY.
 
-    Loads chunks, prepends prefix_passage + breadcrumb, encodes, saves .npy.
+    Loads chunks, prepends prefix_passage, encodes, saves .npy.
     Creates parent directories if needed. Returns the NPY path.
     """
     print(f"  Loading chunks from {Path(csv).name}")
@@ -174,7 +173,7 @@ def store_in_chroma(
             {
                 "siman":      int(row["siman"]),
                 "seif":       int(row["seif"]),
-                "siman_seif": row["siman_seif"],
+                "siman_seif": f"{int(row['siman'])}:{int(row['seif'])}",  # built on-the-fly
             }
             for row in chunks
         ],
