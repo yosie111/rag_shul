@@ -23,9 +23,11 @@ Usage:
     python exp_main.py --eval-type retrieval
     python exp_main.py --max-questions 50
     python exp_main.py --force-rebuild
+    python exp_main.py --dump-first-query
 """
 
 import argparse
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -113,67 +115,142 @@ def resolve_max_questions(cli_value, yaml_value) -> int | None:
     return n if n > 0 else None
 
 
+# ─── Inspection helpers ────────────────────────────────────────────────────────
+
+def dump_first_query(
+    retriever,
+    queries_df: pd.DataFrame,
+    output_dir: Path,
+    *,
+    retriever_name: str = "",
+    run_mode: str = "",
+    top_k: int = 10,
+    ts_filename: str | None = None,
+) -> Path:
+    """
+    מריץ את ה-retriever על השאלה הראשונה ב-queries_df וכותב לקובץ JSON
+    את **הפלט הגולמי** של retriever.retrieve(...) — בדיוק כפי שהוחזר,
+    בלי עיצוב, בלי השוואה ל-ground truth, בלי שדות נגזרים.
+
+    מבנה הקובץ:
+        {
+          "query":   "<טקסט השאלה הראשונה>",
+          "top_k":   <המספר שהועבר ל-retrieve>,
+          "results": <list[dict] — מה ש-retriever.retrieve() החזיר>
+        }
+
+    שם הקובץ: exp_first_query_<run_mode>_<retriever>_<timestamp>.json
+    """
+    if len(queries_df) == 0:
+        raise ValueError("queries_df is empty — nothing to dump.")
+
+    question = str(queries_df.iloc[0]["question"])
+    results  = retriever.retrieve(question, top_k=top_k)
+
+    if ts_filename is None:
+        ts_filename = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    name_safe = (retriever_name or "retriever").replace("/", "_")
+    parts = ["exp_first_query"]
+    if run_mode:
+        parts.append(run_mode)
+    parts.extend([name_safe, ts_filename])
+    out_path = Path(output_dir) / f"{'_'.join(parts)}.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "query":   question,
+        "top_k":   top_k,
+        "results": results,   # exactly what retriever.retrieve() returned
+    }
+
+    # default=str: insurance against non-JSON-native types (e.g. numpy.float32)
+    # leaking out of a future retriever; converts them to string instead of crashing.
+    out_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
+    return out_path
+
+
 # ─── Pipeline stages ───────────────────────────────────────────────────────────
+
+def _ensure_stage(
+    *,
+    label:          str,
+    output:         Path,
+    input_path:     Path,
+    input_label:    str,
+    builder,                 # callable
+    builder_kwargs: dict,
+) -> None:
+    """
+    תבנית גנרית לשלב צנרת:
+      • אם הפלט קיים — SKIP ולחזור
+      • אם הקלט חסר — FileNotFoundError עם הקשר
+      • אחרת — להפעיל את הבילדר ולהדפיס BUILD/DONE
+    הקריאה ל-import של הבילדר נשארת בפונקציות הציבוריות (lazy),
+    כדי לא לטעון מודולים שלא ירוצו בשלב זה.
+    """
+    if output.exists():
+        print(f"{label}  SKIP   — {output.name} already exists")
+        return
+
+    if not input_path.exists():
+        raise FileNotFoundError(
+            f"{input_label} not found: {input_path}\n"
+            f"Cannot proceed without it."
+        )
+
+    print(f"{label}  BUILD  — {input_path.name}  →  {output.name}")
+    builder(**builder_kwargs)
+    print(f"{label}  DONE   — wrote {output.name}")
 
 
 def ensure_chunks_csv(json_file: Path, chunks_csv: Path, chunker_cfg: dict) -> None:
     """
     שלב 1: מוודא שקובץ ה-chunks קיים. אם לא — קורא ל-chunker.build_chunks_csv.
-
-    האחריות של שלב זה מוגבלת ל:
-      • בדיקת קיום קובץ
-      • קריאה ל-chunker עם הפרמטרים מ-YAML
     """
-    if chunks_csv.exists():
-        print(f"[1/3 chunker]  SKIP   — {chunks_csv.name} already exists")
-        return
-
-    if not json_file.exists():
-        raise FileNotFoundError(
-            f"Source JSON not found: {json_file}\n"
-            f"Cannot build chunks without source data."
-        )
-
-    print(f"[1/3 chunker]  BUILD  — {json_file.name}  →  {chunks_csv.name}")
     # lazy import — only when we actually need to run the chunker
     from chunker.chunker import build_chunks_csv
 
-    build_chunks_csv(
-        json_path   = json_file,
-        csv_path    = chunks_csv,
-        chunker_cfg = chunker_cfg,
+    _ensure_stage(
+        label          = "[1/3 chunker]",
+        output         = chunks_csv,
+        input_path     = json_file,
+        input_label    = "Source JSON",
+        builder        = build_chunks_csv,
+        builder_kwargs = {
+            "json_path":   json_file,
+            "csv_path":    chunks_csv,
+            "chunker_cfg": chunker_cfg,
+        },
     )
-    print(f"[1/3 chunker]  DONE   — wrote {chunks_csv.name}")
-    
-    
+
+
 def ensure_embeddings_npy(chunks_csv: Path, embeddings_npy: Path, embed_cfg: dict) -> None:
     """
     שלב 2: מוודא שקובץ ה-embeddings (.npy) קיים. אם לא — קורא ל-embed.build_embeddings.
 
     דרישה מוקדמת: chunks_csv חייב להתקיים (מטופל ב-ensure_chunks_csv לפני שלב זה).
     """
-    if embeddings_npy.exists():
-        print(f"[2/3 embed]    SKIP   — {embeddings_npy.name} already exists")
-        return
-
-    if not chunks_csv.exists():
-        raise FileNotFoundError(
-            f"Chunks CSV not found: {chunks_csv}\n"
-            f"This should have been created in stage 1."
-        )
-
-    print(f"[2/3 embed]    BUILD  — {chunks_csv.name}  →  {embeddings_npy.name}")
     # lazy import — only when we actually need to run the embedder
     from embedder.embed import build_embeddings
 
-    build_embeddings(
-        csv            = chunks_csv,
-        npy            = embeddings_npy,
-        model          = embed_cfg["model"],
-        batch_size     = embed_cfg.get("batch_size", 32),
-        prefix_passage = embed_cfg.get("prefix_passage", "passage: "),
+    _ensure_stage(
+        label          = "[2/3 embed]  ",   # padding כדי ליישר עם '[1/3 chunker]'
+        output         = embeddings_npy,
+        input_path     = chunks_csv,
+        input_label    = "Chunks CSV",
+        builder        = build_embeddings,
+        builder_kwargs = {
+            "csv":            chunks_csv,
+            "npy":            embeddings_npy,
+            "model":          embed_cfg["model"],
+            "batch_size":     embed_cfg.get("batch_size", 32),
+            "prefix_passage": embed_cfg.get("prefix_passage", "passage: "),
+        },
     )
-    print(f"[2/3 embed]    DONE   — wrote {embeddings_npy.name}")
 
 
 # ─── Entry point ───────────────────────────────────────────────────────────────
@@ -190,6 +267,8 @@ def main():
                         help="Limit number of questions (null = from YAML; 'all' = all)")
     parser.add_argument("--force-rebuild", action="store_true",
                         help="Delete existing chunks_csv + embeddings_npy and rebuild from source JSON")
+    parser.add_argument("--dump-first-query", action="store_true",
+                        help="Dump the raw retriever output for the first question to a JSON file")
     args = parser.parse_args()
 
     # ── 0. Resolve run mode & paths ───────────────────────────────────────────
@@ -246,6 +325,19 @@ def main():
     n_running = len(queries_df)
     print(f"               running {n_running} / {total_available} questions")
 
+    # ── 4b. Optional: dump raw retriever output for the first question ────────
+    if args.dump_first_query:
+        dump_top_k = int(cfg["retrieval"].get("top_k_retrieve", 10))
+        dumped = dump_first_query(
+            retriever,
+            queries_df,
+            output_dir     = HERE,
+            retriever_name = args.retriever,
+            run_mode       = run_mode,
+            top_k          = dump_top_k,
+        )
+        print(f"               first-query dump -> {dumped.name}")
+
     # ── 5. Evaluator — from YAML, unless overridden by --eval-type ────────────
     eval_type = args.eval_type or eval_params.get("type", "retrieval")
     print(f"               evaluator: {eval_type}")
@@ -271,16 +363,13 @@ def main():
     print("\n" + report_text)
 
     # ── 8. Save ───────────────────────────────────────────────────────────────
+    # מטא-דאטה ברמת ניסוי — שייך לאורכסטרטור, לא ל-evaluator.
+    # נרמול JSON-serializable של המדדים מתבצע כעת בתוך RetrievalEvaluator.
     result["timestamp"]       = ts_readable
     result["retriever"]       = args.retriever
     result["config"]          = str(CONFIG_PATH)
     result["run_mode"]        = run_mode
     result["total_available"] = total_available
-
-    # JSON-serializable: retrieval metrics contain dicts with int keys — normalize them
-    if "metrics" in result and "recall_at" in result["metrics"]:
-        result["metrics"]["recall_at"]   = {str(k): v for k, v in result["metrics"]["recall_at"].items()}
-        result["metrics"]["recall_rate"] = {str(k): v for k, v in result["metrics"]["recall_rate"].items()}
 
     name_safe = args.retriever.replace("/", "_")
     stem = f"exp_results_{eval_type}_{run_mode}_{name_safe}_{ts_filename}"

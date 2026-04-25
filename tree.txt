@@ -42,15 +42,11 @@ C:.
 |       config_template.yaml
 |       
 +---data
-|   |   tree.txt
-|   |   
 |   +---eval
 |   |       mini_sa_eval.csv
 |   |       sa_eval.csv
 |   |       
 |   +---processed
-|   |       chunks_DataFrame.csv
-|   |       mini_chunks_v1.csv
 |   |       mini_shulchan_aruch_rag.json
 |   |       shulchan_aruch_rag.json
 |   |       shulchan_aruch_rag_with_breadcrumb.json
@@ -88,8 +84,13 @@ C:.
 |           __init__.cpython-313.pyc
 |           
 +---experiments
+|       chunks_DataFrame.csv
 |       exp_config.yaml
 |       exp_main.py
+|       exp_results_retrieval_mini_retrieval_npy_20260425_232632.json
+|       exp_results_retrieval_mini_retrieval_npy_20260425_232632.txt
+|       mini_chunks_v1.csv
+|       mini_embeddings_v1.npy
 |       
 +---notebooks
 |       add_breadcrumb_to_json.ipynb
@@ -97,12 +98,13 @@ C:.
 |       
 \---retrievers
     |   base.py
-    |   semantic_e5_rag_json.py
+    |   npy_retriever.py
     |   semantic_e5_seif_v6_combined.py
     |   __init__.py
     |   
     \---__pycache__
             base.cpython-313.pyc
+            npy_retriever.cpython-313.pyc
             semantic_e5_rag_json.cpython-313.pyc
             semantic_e5_seif_v6_combined.cpython-313.pyc
             __init__.cpython-313.pyc

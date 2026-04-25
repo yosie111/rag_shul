@@ -3,8 +3,8 @@ NpyRetriever — semantic retrieval on pre-built CSV + NPY artifacts
 ================================================================================
 Layout this retriever expects:
     <project_root>/
-      ├── data/processed/chunks_v1.csv           — flat CSV from chunker.build_csv
-      └── data/processed/embeddings_v1.npy       — matrix from embed.build_embeddings
+      ├── chunks_v1.csv           — flat CSV from chunker.build_csv
+      └── embeddings_v1.npy       — matrix from embed.build_embeddings
     (paths are passed in via kwargs — nothing is hardcoded)
 
 What the retriever does:
@@ -18,6 +18,11 @@ passage encoding by embed.build_embeddings, query encoding by embed.encode_query
 
 Returns dicts conforming to BaseRetriever.retrieve:
     rank, chunk_id, score, text, siman_parent, siman, seif
+
+Loading strategy:
+    - __init__ validates that input files exist (fail fast).
+    - Heavy resources (CSV parse, NPY load, ~2GB SentenceTransformer model) are
+      loaded lazily on the first retrieve() call.
 """
 
 from pathlib import Path
@@ -51,22 +56,17 @@ class NpyRetriever(BaseRetriever):
         All paths & params are passed explicitly (typically by exp_main via
         get_retriever(...)). Unknown kwargs (top_k, score_threshold, ...) are
         silently ignored — they're consumed by the evaluator, not here.
+
+        Files are validated here (fail fast) but their contents are loaded
+        lazily on the first retrieve() call.
         """
         self._chunks_csv     = Path(chunks_csv)     if chunks_csv     else None
         self._embeddings_npy = Path(embeddings_npy) if embeddings_npy else None
-        self._model_name     = model
-        self._prefix_query   = prefix_query
 
-        # Lazily loaded artifacts
-        self._model: SentenceTransformer | None = None
-        self._embeddings: np.ndarray | None     = None
-        self._seifs: list[dict] | None          = None
-
-    def _load(self) -> None:
-        """Lazy load — happens once per instance."""
-        if self._model is not None:
-            return
-
+        # ── Fail fast: validate file existence at construction time ────────
+        # Surfacing missing-file errors here means exp_main.py reports them
+        # immediately, before printing "Loading retriever..." and starting
+        # any expensive work.
         if self._chunks_csv is None or not self._chunks_csv.exists():
             raise FileNotFoundError(
                 f"Chunks CSV not found: {self._chunks_csv}\n"
@@ -77,6 +77,22 @@ class NpyRetriever(BaseRetriever):
                 f"Embeddings matrix not found: {self._embeddings_npy}\n"
                 f"Run the embedder (exp_main.py handles this automatically)."
             )
+
+        self._model_name     = model
+        self._prefix_query   = prefix_query
+
+        # Lazily loaded artifacts
+        self._model: SentenceTransformer | None = None
+        self._embeddings: np.ndarray | None     = None
+        self._seifs: list[dict] | None          = None
+
+    def _load(self) -> None:
+        """
+        Lazy load — happens once per instance.
+        Files were validated in __init__; here we actually parse and load them.
+        """
+        if self._model is not None:
+            return
 
         # 1. CSV — chunks already flat, no JSON flattening required
         df = pd.read_csv(self._chunks_csv)

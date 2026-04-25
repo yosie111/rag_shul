@@ -50,21 +50,31 @@ def _find_gt_rank_unique_siman(results: list[dict], gt_siman: int) -> int | None
 
 
 def _compute_recall_mrr(ranks: list, k_values: list[int]) -> dict:
+    """
+    Compute Recall@K and MRR.
+
+    Returns a dict whose `recall_at` / `recall_rate` mappings use STRING keys —
+    so the result is JSON-serializable as-is. The orchestrator does not need to
+    post-process the metrics before saving.
+    """
     n = len(ranks)
-    recall_at  = {k: 0 for k in k_values}
-    reciprocal = 0.0
+    # Internal accumulation keeps int keys for clarity
+    recall_at_int  = {k: 0 for k in k_values}
+    reciprocal     = 0.0
     for r in ranks:
         if r is None:
             continue
         reciprocal += 1.0 / r
         for k in k_values:
             if r <= k:
-                recall_at[k] += 1
-    recall_rate = {k: (recall_at[k] / n if n else 0.0) for k in k_values}
+                recall_at_int[k] += 1
+    recall_rate_int = {k: (recall_at_int[k] / n if n else 0.0) for k in k_values}
     mrr = reciprocal / n if n else 0.0
+
+    # Convert to JSON-serializable string keys at the public boundary
     return {
-        "recall_at":   recall_at,
-        "recall_rate": recall_rate,
+        "recall_at":   {str(k): v for k, v in recall_at_int.items()},
+        "recall_rate": {str(k): v for k, v in recall_rate_int.items()},
         "mrr":         mrr,
         "n_total":     n,
     }
@@ -125,7 +135,8 @@ class RetrievalEvaluator(BaseEvaluator):
         elapsed_sec = time.perf_counter() - t_start
         metrics = _compute_recall_mrr(ranks, self.k_values)
 
-        target_rate   = metrics["recall_rate"].get(self.target_k, 0.0)
+        # recall_rate now uses string keys — look up accordingly
+        target_rate   = metrics["recall_rate"].get(str(self.target_k), 0.0)
         target_passed = target_rate >= self.target_recall
 
         return {
@@ -160,15 +171,16 @@ class RetrievalEvaluator(BaseEvaluator):
             "",
             "Recall@K:",
         ]
+        # metrics dicts use string keys — convert k for lookups; keep k as int for display
         for k in k_values:
-            rate = metrics["recall_rate"].get(k, 0.0)
-            count = metrics["recall_at"].get(k, 0)
+            rate  = metrics["recall_rate"].get(str(k), 0.0)
+            count = metrics["recall_at"].get(str(k), 0)
             lines.append(f"  K={k:<3} → {rate:.4f}  ({count}/{n_total})")
         lines.append("")
         lines.append(f"MRR: {metrics['mrr']:.4f}")
         lines.append("")
         status = "PASSED" if result["target_passed"] else "FAILED"
-        target_rate = metrics["recall_rate"].get(self.target_k, 0.0)
+        target_rate = metrics["recall_rate"].get(str(self.target_k), 0.0)
         lines.append(
             f"Target: Recall@{self.target_k} >= {self.target_recall:.2f} "
             f"→ {target_rate:.4f} [{status}]"

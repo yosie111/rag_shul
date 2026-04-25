@@ -37,9 +37,9 @@ chunker:
   overlap: 50           # words shared between consecutive chunks
   mode: siman_boundary  # "siman_boundary" | "sliding_window"
   chunk_fields:         # ordered list of seif fields to join into the chunk text
+   # - siman_sign     # uncomment to prepend the siman topic heading
     - text
     - hagah             # comment out to exclude Rema commentary
-    # - siman_title     # uncomment to prepend the siman topic heading
 
 embeddings:
   model: "intfloat/multilingual-e5-large"
@@ -48,8 +48,8 @@ embeddings:
   prefix_query:   "query: "     # נוסף ל-query בזמן retriever.retrieve
 
 retrieval:
-  top_k:          1     # chunks returned to the user / LLM
-  top_k_retrieve: 50    # chunks retrieved for Recall@K computation
+  top_k:          3     # chunks returned to the user / LLM
+  top_k_retrieve: 10    # chunks retrieved for Recall@K computation
   score_threshold: 0.85
 
 evaluation:

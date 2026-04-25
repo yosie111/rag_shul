@@ -24,7 +24,7 @@ embeddings:
 
 retrieval:
   top_k: 3             # chunks returned to the user / LLM
-  top_k_retrieve: 10   # chunks retrieved for Recall@K computation
+  top_k_retrieve: 50   # chunks retrieved for Recall@K computation
   score_threshold: 0.85
 
 evaluation:
