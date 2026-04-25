@@ -115,9 +115,10 @@ def resolve_max_questions(cli_value, yaml_value) -> int | None:
 
 # ─── Pipeline stages ───────────────────────────────────────────────────────────
 
+
 def ensure_chunks_csv(json_file: Path, chunks_csv: Path, chunker_cfg: dict) -> None:
     """
-    שלב 1: מוודא שקובץ ה-chunks קיים. אם לא — קורא ל-chunker.build_csv.
+    שלב 1: מוודא שקובץ ה-chunks קיים. אם לא — קורא ל-chunker.build_chunks_csv.
 
     האחריות של שלב זה מוגבלת ל:
       • בדיקת קיום קובץ
@@ -135,16 +136,16 @@ def ensure_chunks_csv(json_file: Path, chunks_csv: Path, chunker_cfg: dict) -> N
 
     print(f"[1/3 chunker]  BUILD  — {json_file.name}  →  {chunks_csv.name}")
     # lazy import — only when we actually need to run the chunker
-    from chunker.chunker import build_csv as chunker_build_csv
+    from chunker.chunker import build_chunks_csv
 
-    chunker_build_csv(
-        json_path    = json_file,
-        csv_path     = chunks_csv,
-        chunk_fields = chunker_cfg.get("chunk_fields"),
+    build_chunks_csv(
+        json_path   = json_file,
+        csv_path    = chunks_csv,
+        chunker_cfg = chunker_cfg,
     )
     print(f"[1/3 chunker]  DONE   — wrote {chunks_csv.name}")
-
-
+    
+    
 def ensure_embeddings_npy(chunks_csv: Path, embeddings_npy: Path, embed_cfg: dict) -> None:
     """
     שלב 2: מוודא שקובץ ה-embeddings (.npy) קיים. אם לא — קורא ל-embed.build_embeddings.

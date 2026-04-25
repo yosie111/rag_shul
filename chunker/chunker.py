@@ -1,56 +1,57 @@
 """
 chunker.py — Seif-level chunker for Shulchan Arukh RAG pipeline
 ================================================================
-Reads the RAG JSON (produced by Member 1) and builds a flat DataFrame
-where each row is one seif — the unit sent to the embedder.
+Reads the RAG JSON and produces two CSVs in the run directory:
 
-Input JSON structure:
+  1. chunks_DataFrame.csv  — debug/inspection view: every field that exists
+                             in the source JSON becomes a column.
+  2. chunks_v1.csv         — pipeline output, 3 columns only:
+                             siman, seif, text
+                             (text = chunk_fields joined by a single space)
+
+Supported JSON variations
+-------------------------
+The same code handles multiple JSON structures (e.g. with or without
+siman-level metadata like `hilchot_group` / `siman_sign`). Columns in
+df_chunker reflect whatever fields actually appear in the file —
+fields that are absent are simply not added.
+
+Expected top-level structure:
     {
-      "title": "שולחן ערוך, אורח חיים",
-      "source": "Torat Emet 363",
+      "title":  "...",         (optional)
+      "source": "...",         (optional)
       "simanim": [
         {
-          "siman": 1,
+          "siman": <int>,
+          "<siman-level field>": ...,    (optional, e.g. hilchot_group)
+          ...
           "seifim": [
             {
-              "seif": 1,
-              "text": "יתגבר כארי...",
-              "hagah": "ועל כל פנים...",   (Rema commentary, or null)
-              "text_raw": "..."             (raw text with HTML, not used)
+              "seif": <int>,
+              "<seif-level field>": ...,  (e.g. text, hagah, text_raw)
+              ...
             }
           ]
         }
       ]
     }
 
-Output DataFrame columns:
-    siman      (int)  — chapter number
-    seif       (int)  — sub-chapter number
-    siman_seif (str)  — "סימן N, סעיף M"  (matches מקור column in eval CSV)
-    breadcrumb (str)  — "<title>, סימן N, סעיף M"  (prepended to text at embed time)
-    text       (str)  — text + hagah combined, sent to the embedder
-
 Public API:
-    load_schema(json_path)        → dict
-    build_dataframe(schema, ...)  → DataFrame
-    build_csv(json, csv, fields)  → writes CSV to disk
+    load_schema(json_path)              → dict
+    build_dataframe_chunker(schema)     → pd.DataFrame  (df_chunker)
+    build_chunks_csv(json, csv, cfg)    → writes both CSVs, returns Path
+
+Configuration (chunker_cfg, taken from exp_config.yaml `chunker:` block):
+    chunk_size:    int   — accepted but currently unused (reserved)
+    overlap:       int   — accepted but currently unused (reserved)
+    mode:          str   — accepted but currently unused (reserved)
+    chunk_fields:  list  — ordered list of field names to join into `text`
 """
 
 import json
 from pathlib import Path
 
 import pandas as pd
-import yaml
-
-CONFIG_PATH = Path(__file__).parent.parent / "config" / "config_template.yaml"
-
-# Default title used when the schema has no "title" key (defensive fallback).
-DEFAULT_TITLE = "שולחן ערוך, אורח חיים"
-
-
-def load_config() -> dict:
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        return yaml.safe_load(f)
 
 
 def load_schema(json_path: str | Path) -> dict:
@@ -59,61 +60,111 @@ def load_schema(json_path: str | Path) -> dict:
         return json.load(f)
 
 
-def build_dataframe(schema: dict, chunk_fields: list[str] | None = None) -> pd.DataFrame:
+def build_dataframe_chunker(schema: dict) -> pd.DataFrame:
     """
-    Convert the RAG JSON dict into a flat DataFrame (one row per seif).
+    Convert the RAG JSON dict into a flat DataFrame — one row per seif.
 
-    Args:
-        schema: parsed JSON dict
-        chunk_fields: ordered list of seif fields to join into the text column.
-                      Defaults to the chunk_fields list in config_template.yaml.
+    Columns are derived from whatever fields exist in the JSON:
+      • 'siman' and 'seif' first
+      • Then siman-level fields (e.g. hilchot_group, siman_sign), duplicated
+        across all seifim of the same siman
+      • Then seif-level fields (e.g. text, hagah, text_raw)
 
-    Returns:
-        DataFrame with columns: siman, seif, siman_seif, breadcrumb, text
-        Sorted by siman then seif, with a clean integer index.
+    Fields not present in the JSON do not appear as columns. This keeps the
+    function compatible with multiple JSON structures (basic / breadcrumb /
+    future variants).
     """
-    if chunk_fields is None:
-        chunk_fields = load_config()["chunker"]["chunk_fields"]
-
-    title = schema.get("title") or DEFAULT_TITLE
-
     rows = []
     for siman_data in schema["simanim"]:
         siman_num = siman_data["siman"]
+
+        # Siman-level fields = everything on the siman except 'siman' & 'seifim'
+        siman_fields = {
+            k: v for k, v in siman_data.items()
+            if k not in ("siman", "seifim")
+        }
+
         for seif_data in siman_data["seifim"]:
             seif_num = seif_data["seif"]
-            parts = [seif_data.get(f) for f in chunk_fields if seif_data.get(f)]
-            text = " ".join(parts)
-            siman_seif = f"סימן {siman_num}, סעיף {seif_num}"
-            rows.append({
-                "siman":      siman_num,
-                "seif":       seif_num,
-                "siman_seif": siman_seif,
-                "breadcrumb": f"{title}, {siman_seif}",
-                "text":       text,
-            })
 
-    df = pd.DataFrame(rows)
-    return df.sort_values(["siman", "seif"]).reset_index(drop=True)
+            # Seif-level fields = everything on the seif except 'seif'
+            seif_fields = {
+                k: v for k, v in seif_data.items()
+                if k != "seif"
+            }
+
+            row = {
+                "siman": siman_num,
+                "seif":  seif_num,
+                **siman_fields,
+                **seif_fields,
+            }
+            rows.append(row)
+
+    df_chunker = pd.DataFrame(rows)
+    return df_chunker.sort_values(["siman", "seif"]).reset_index(drop=True)
 
 
-def build_csv(
-    json_path: str | Path,
-    csv_path:  str | Path,
-    chunk_fields: list[str] | None = None,
+def _join_chunk_fields(row: pd.Series, chunk_fields: list[str]) -> str:
+    """
+    Join the values of `chunk_fields` from a row using a single space.
+    Missing / NaN / empty values are skipped silently — keeps the output
+    clean when a field (e.g. `hagah`) is null on some seifim.
+    """
+    parts: list[str] = []
+    for field in chunk_fields:
+        if field not in row.index:
+            continue
+        value = row[field]
+        if value is None:
+            continue
+        if isinstance(value, float) and pd.isna(value):
+            continue
+        if value == "":
+            continue
+        parts.append(str(value))
+    return " ".join(parts)
+
+
+def build_chunks_csv(
+    json_path:   str | Path,
+    csv_path:    str | Path,
+    chunker_cfg: dict,
 ) -> Path:
     """
-    Pipeline entry point: JSON → chunks CSV.
+    Pipeline entry point: JSON → chunks_v1.csv (+ chunks_DataFrame.csv).
 
-    Reads the RAG JSON, flattens it into a DataFrame (via build_dataframe),
-    and writes it to `csv_path`. Creates parent directories if needed.
+    Args:
+        json_path:   path to the RAG JSON.
+        csv_path:    path to the final chunks CSV (typically chunks_v1.csv).
+                     chunks_DataFrame.csv is written alongside it (same dir).
+        chunker_cfg: the `chunker:` block from exp_config.yaml. Currently only
+                     `chunk_fields` is consumed; `chunk_size`, `overlap`, and
+                     `mode` are accepted but reserved for future use.
 
-    Returns the path to the written CSV.
+    Returns:
+        Path to chunks_v1.csv.
     """
+    chunk_fields = chunker_cfg.get("chunk_fields") or []
+
     schema = load_schema(json_path)
-    df = build_dataframe(schema, chunk_fields)
+    df_chunker = build_dataframe_chunker(schema)
 
     csv_path = Path(csv_path)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(csv_path, index=False, encoding="utf-8")
+
+    # 1. Debug view — full DataFrame with every JSON field as a column.
+    debug_path = csv_path.parent / "chunks_DataFrame.csv"
+    df_chunker.to_csv(debug_path, index=False, encoding="utf-8")
+
+    # 2. Pipeline output — only siman, seif, text.
+    df_final = pd.DataFrame({
+        "siman": df_chunker["siman"],
+        "seif":  df_chunker["seif"],
+        "text":  df_chunker.apply(
+            lambda r: _join_chunk_fields(r, chunk_fields), axis=1
+        ),
+    })
+    df_final.to_csv(csv_path, index=False, encoding="utf-8")
+
     return csv_path

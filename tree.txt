@@ -3,7 +3,19 @@ Volume serial number is 92BD-1583
 C:.
 |   .env.example
 |   .gitignore
-|   README.md|   
+|   add_breadcrumb_to_json.ipynb
+|   compare_experiments.py
+|   main.py
+|   README.md
+|   run_experiment.py
+|   Shulchan_Aruch_Full_Pipeline.ipynb
+|   step_01_data_loading.py
+|   step_02_embeddings.py
+|   step_03_retrieval.py
+|   step_05_evaluate_rag.py
+|   SUMMARY.md
+|   tree.txt
+|   
 +---chat-ui
 |   |   .env.example
 |   |   .gitignore
@@ -17,11 +29,14 @@ C:.
 |           chat.py
 |           
 +---chunker
-|       chunker.py
-|       main.py
-|       preview.py
-|       __init__.py
-|       
+|   |   chunker.py
+|   |   main.py
+|   |   __init__.py
+|   |   
+|   \---__pycache__
+|           chunker.cpython-313.pyc
+|           __init__.cpython-313.pyc
+|           
 +---config
 |       config.yaml
 |       config_template.yaml
@@ -34,6 +49,8 @@ C:.
 |   |       sa_eval.csv
 |   |       
 |   +---processed
+|   |       chunks_DataFrame.csv
+|   |       mini_chunks_v1.csv
 |   |       mini_shulchan_aruch_rag.json
 |   |       shulchan_aruch_rag.json
 |   |       shulchan_aruch_rag_with_breadcrumb.json
@@ -52,9 +69,12 @@ C:.
 |           shulchan_aruch_template.json
 |           
 +---embedder
-|       embed.py
-|       requirements.txt
-|       
+|   |   embed.py
+|   |   requirements.txt
+|   |   
+|   \---__pycache__
+|           embed.cpython-313.pyc
+|           
 +---evaluation
 |   |   base.py
 |   |   llm_evaluator.py
