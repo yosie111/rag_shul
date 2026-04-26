@@ -1,41 +1,67 @@
 # exp_config.yaml — RAG pipeline configuration (experiments)
 # ===========================================================
+# Experiment settings. Paths are relative to the experiments/ directory.
+#
+# Pipeline flow (exp_main.py):
+#   1. chunker.build_csv:        json_file   →  chunks_csv
+#   2. embed.build_embeddings:   chunks_csv  →  embeddings_npy
+#   3. retriever (retrieval_npy): chunks_csv + embeddings_npy + query → results
+#   4. evaluator:                 retriever  + csv_path → report
+#
+# Skip logic (handled in exp_main):
+#   • embeddings_npy exists       → skip stages 1 and 2
+#   • chunks_csv exists, no npy   → skip stage 1 only
+#   • neither exists              → full run
+#   • --force-rebuild             → delete everything and rerun
+
+# Run mode: full = real data | mini = small smoke-test data
+# Can also be overridden on the command line: --mode full / --mode mini
+run_mode: mini        # full | mini
 
 paths:
-  text_file: "../data/preprocessed/shulchan_rag.json"  # input data file (JSON format)
-  csv_path:  "../data/eval/sa_eval.csv"
+  full:
+    json_file:       "../data/processed/shulchan_aruch_rag.json"
+    chunks_csv:      "chunks_v1.csv"                              # ← changed
+    embeddings_npy:  "embeddings_v1.npy"
+    csv_path:        "../data/eval/sa_eval.csv"
+
+  mini:
+    json_file:       "../data/processed/mini_shulchan_aruch_rag.json"
+    chunks_csv:      "mini_chunks_v1.csv"                         # ← changed
+    embeddings_npy:  "mini_embeddings_v1.npy"
+    csv_path:        "../data/eval/mini_sa_eval.csv"
+
 
 chunker:
   chunk_size: 200       # words per chunk
   overlap: 50           # words shared between consecutive chunks
   mode: siman_boundary  # "siman_boundary" | "sliding_window"
   chunk_fields:         # ordered list of seif fields to join into the chunk text
+   # - siman_sign     # uncomment to prepend the siman topic heading
     - text
-    - hagah             # uncomment to include Rema commentary
-    # - siman_title     # uncomment to prepend the siman topic heading to each chunk
+    - hagah             # comment out to exclude Rema commentary
 
 embeddings:
   model: "intfloat/multilingual-e5-large"
   batch_size: 32
-  prefix_passage: "passage: "
-  prefix_query:   "query: "
+  prefix_passage: "passage: "   # prepended to breadcrumb+text during build_embeddings
+  prefix_query:   "query: "     # prepended to the query during retriever.retrieve
 
 retrieval:
-  top_k:          1     # chunks returned to the user / LLM
-  top_k_retrieve: 50    # chunks retrieved for Recall@K computation
+  top_k:          3     # chunks returned to the user / LLM
+  top_k_retrieve: 10    # chunks retrieved for Recall@K computation
   score_threshold: 0.85
 
-
 evaluation:
-  # Choose type: 'retrieval' (ready) or 'llm_qa' (future)
+  # Evaluator type: 'retrieval' (Exists) or 'llm_qa' (future)
   type: "retrieval"
 
   # --- parameters for the retrieval evaluator ---
   k_values:       [1, 3, 5, 10, 18, 30, 50]  # K values for the Recall report
   target_k:       50                          # K to compare against the target
   target_recall:  0.85                        # Recall target (0-1)
-  retrieve_k:     100                         # how many results to retrieve (must be >= max(k_values))
-  max_questions:  null                        # null = all questions; number = only first N
+  retrieve_k:     100                         # how many results to return (>= max(k_values))
+  max_questions:  null                        # null = all questions; integer = only the first N
 
   # --- parameters for the llm_qa evaluator (future) ---
   llm_model:           "gpt-4o"

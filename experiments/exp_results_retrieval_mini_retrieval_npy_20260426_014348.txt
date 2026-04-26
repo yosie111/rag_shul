@@ -1,0 +1,18 @@
+Run: 2026-04-26 01:43:48
+Evaluator: retrieval (granularity: unique-siman)
+Retriever: retrieval_npy
+Questions: 38
+Elapsed:   18.71 sec
+
+Recall@K:
+  K=1   → 0.7895  (30/38)
+  K=3   → 0.9211  (35/38)
+  K=5   → 0.9474  (36/38)
+  K=10  → 0.9474  (36/38)
+  K=18  → 0.9474  (36/38)
+  K=30  → 0.9474  (36/38)
+  K=50  → 0.9474  (36/38)
+
+MRR: 0.8618
+
+Target: Recall@50 >= 0.85 → 0.9474 [PASSED]

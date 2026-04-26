@@ -6,26 +6,34 @@ Maps retriever names (strings) to their classes.
 To add a new retriever:
     1. Create a new file in retrievers/  (e.g. my_retriever.py)
     2. Add an import and a REGISTRY entry below
-    3. Run:  echo y | python run_experiment.py --retriever my_retriever --name exp_029 --no-gpt
+    3. Run:  python experiments/exp_main.py --retriever my_retriever
 """
 
 from .base import BaseRetriever
 from .semantic_e5_seif_v6_combined import SemanticE5SeifV6CombinedRetriever
-from .semantic_e5_rag_json import SemanticE5RagJsonRetriever
+from .npy_retriever import NpyRetriever
 
 # Map of name → class for every available retriever
 REGISTRY: dict[str, type[BaseRetriever]] = {
     "semantic_e5_seif_v6_combined": SemanticE5SeifV6CombinedRetriever,
-    "semantic_e5_rag_json":         SemanticE5RagJsonRetriever,
+    "retrieval_npy":                NpyRetriever,
 }
 
 
-def get_retriever(name: str) -> BaseRetriever:
-    """Return an instance of the named retriever. Raises ValueError if unknown."""
+def get_retriever(name: str, **kwargs) -> BaseRetriever:
+    """
+    Return an instance of the named retriever.
+
+    Any kwargs are forwarded to the retriever's __init__ (e.g. chunks_csv,
+    embeddings_npy, model, prefix_query, top_k, score_threshold).
+    Retrievers are expected to ignore kwargs they don't use.
+
+    Raises ValueError if the name is unknown.
+    """
     if name not in REGISTRY:
         available = list(REGISTRY.keys())
         raise ValueError(f"Retriever '{name}' not found. Available: {available}")
-    return REGISTRY[name]()
+    return REGISTRY[name](**kwargs)
 
 
 def list_retrievers() -> list[str]:
