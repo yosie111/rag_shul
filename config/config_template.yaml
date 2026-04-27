@@ -4,13 +4,15 @@
 # Paths are relative to the project root (directory containing config.py).
 
 paths:
-  json_file: "shulchan_aruch_rag.json"
-  csv_path: "sa_eval.csv"
+  text_file: "../study ai/datasete/Shulchan Arukh, Orach Chayim - he - Torat Emet 363.txt"
+  xlsx_path: "שולחן_ערוך_כל_השאלות.xlsx"
+  schema_json: "data/shulchan_aruch_rag.json"
+  chunks_json: "data/chunks.json"
 
 chunker:
   chunk_size: 200       # words per chunk
   overlap: 50           # words shared between consecutive chunks
-  mode: siman_boundary  # "siman_boundary" | "sliding_window"
+  mode: seif            # "seif" | "siman" | "sliding_window"
   chunk_fields:         # ordered list of seif fields to join into the chunk text
     - text
     # - hagah             # uncomment to include Rema commentary

@@ -1,64 +1,51 @@
 """
 chunker/main.py — CLI entry point for the chunker
 ==================================================
-Loads RAG JSON and writes:
-  • chunks_v1.csv          — pipeline output (siman, seif, text)
-  • chunks_DataFrame.csv   — debug view (every JSON field)
-
-Reads the chunker configuration (chunk_fields, etc.) from
-experiments/exp_config.yaml by default.
+Loads Schema 2 JSON, builds the chunk list, and saves it to JSON.
+Input/output paths default to values in config/config.yaml (paths.schema_json / paths.chunks_json).
 
 Usage:
+    python -m chunker.main
     python -m chunker.main --input data/processed/shulchan_aruch_rag.json
-    python -m chunker.main --input <json> --output chunks_v1.csv
-    python -m chunker.main --input <json> --config path/to/exp_config.yaml
+    python -m chunker.main --input data/processed/shulchan_aruch_rag.json --output data/chunks.json
 """
 
 import argparse
+import json
 from pathlib import Path
 
-import yaml
+from .chunker import load_schema, build_dataframe, load_config
 
-from .chunker import build_chunks_csv
-
-HERE                = Path(__file__).parent.parent  # project root
-DEFAULT_CONFIG_PATH = HERE / "experiments" / "exp_config.yaml"
-DEFAULT_OUTPUT_PATH = HERE / "chunks_v1.csv"
+HERE = Path(__file__).parent.parent  # project root
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Chunker — build chunks_v1.csv from RAG JSON"
-    )
-    parser.add_argument("--input",  required=True,
-                        help="path to RAG JSON file")
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT_PATH),
-                        help="output chunks CSV path "
-                             "(chunks_DataFrame.csv is written alongside it)")
-    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH),
-                        help="YAML config (the `chunker:` block is consumed)")
+    cfg       = load_config()
+    run_mode  = cfg.get("run_mode", "full")
+    cfg_paths = cfg.get("paths", {}).get(run_mode, cfg.get("paths", {}))
+    default_input  = str(HERE / cfg_paths.get("schema_json", "data/processed/shulchan_aruch_rag.json"))
+    default_output = str(HERE / cfg_paths.get("chunks_json", "data/chunks.json"))
+
+    parser = argparse.ArgumentParser(description="Chunker — build chunk list from Schema 2 JSON")
+    parser.add_argument("--input",  default=default_input,  help="path to Schema 2 JSON file")
+    parser.add_argument("--output", default=default_output, help="output JSON path")
     args = parser.parse_args()
 
     input_path  = Path(args.input)
     output_path = Path(args.output)
-    config_path = Path(args.config)
 
-    with open(config_path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-    chunker_cfg = cfg.get("chunker", {})
+    print(f"Loading: {input_path}")
+    schema = load_schema(input_path)
 
-    print(f"Config:  {config_path}")
-    print(f"Input:   {input_path}")
-    print(f"Fields:  {chunker_cfg.get('chunk_fields')}")
+    df = build_dataframe(schema)
+    records = [{"id": i, **row} for i, row in enumerate(df.to_dict(orient="records"))]
 
-    csv_path = build_chunks_csv(
-        json_path   = input_path,
-        csv_path    = output_path,
-        chunker_cfg = chunker_cfg,
-    )
+    print(f"Chunks:  {len(records)} chunks across {df['siman'].nunique()} simanim")
 
-    print(f"\nSaved:   {csv_path}")
-    print(f"Saved:   {csv_path.parent / 'chunks_DataFrame.csv'}")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False, indent=2)
+
+    print(f"\nSaved:   {output_path}")
 
 
 if __name__ == "__main__":

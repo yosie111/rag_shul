@@ -19,26 +19,32 @@
 run_mode: mini        # full | mini
 
 paths:
+
   full:
     json_file:       "../data/processed/shulchan_aruch_rag.json"
     chunks_csv:      "chunks_v1.csv"                              # ← changed
     embeddings_npy:  "embeddings_v1.npy"
     csv_path:        "../data/eval/sa_eval.csv"
+    schema_json: "data/processed/shulchan_aruch_rag.json"
+    chunks_json: "data/chunks_siman.json"
 
   mini:
     json_file:       "../data/processed/mini_shulchan_aruch_rag.json"
-    chunks_csv:      "mini_chunks_v1.csv"                         # ← changed
+    chunks_csv:      "mini_chunks_v1.csv"
     embeddings_npy:  "mini_embeddings_v1.npy"
     csv_path:        "../data/eval/mini_sa_eval.csv"
+    schema_json: "data/processed/shulchan_aruch_rag.json"
+    chunks_json: "data/chunks_siman.json"
 
 
 chunker:
   chunk_size: 200       # words per chunk
   overlap: 50           # words shared between consecutive chunks
-  mode: siman_boundary  # "siman_boundary" | "sliding_window"
+  mode: seif            # "seif" | "siman" | "sliding_window"
   chunk_fields:         # ordered list of seif fields to join into the chunk text
     - text
-    - hagah             # comment out to exclude Rema commentary
+    - hagah             # uncomment to include Rema commentary
+    # - siman_title       # uncomment to prepend the siman topic heading to each chunk
 
 embeddings:
   model: "intfloat/multilingual-e5-large"
